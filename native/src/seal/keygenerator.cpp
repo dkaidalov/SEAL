@@ -16,10 +16,9 @@
 using namespace std;
 using namespace seal::util;
 
-namespace seal
-{
+namespace seal {
     KeyGenerator::KeyGenerator(shared_ptr<SEALContext> context) :
-        context_(move(context))
+            context_(move(context))
     {
         // Verify parameters
         if (!context_)
@@ -34,6 +33,32 @@ namespace seal
         // Secret key and public key have not been generated
         sk_generated_ = false;
         pk_generated_ = false;
+        crs_generated_ = false;
+
+        // Generate the secret and public key
+        generate_sk();
+        generate_pk();
+    }
+
+    KeyGenerator::KeyGenerator(std::shared_ptr<SEALContext> context, const KeyGenCRS &keygen_crs) :
+            context_(move(context))
+    {
+        // Verify parameters
+        if (!context_)
+        {
+            throw invalid_argument("invalid context");
+        }
+        if (!context_->parameters_set())
+        {
+            throw invalid_argument("encryption parameters are not set correctly");
+        }
+
+        keygen_crs_ = keygen_crs;
+        crs_generated_ = true;
+
+        // Secret key and public key have not been generated
+        sk_generated_ = false;
+        pk_generated_ = false;
 
         // Generate the secret and public key
         generate_sk();
@@ -41,7 +66,7 @@ namespace seal
     }
 
     KeyGenerator::KeyGenerator(shared_ptr<SEALContext> context,
-        const SecretKey &secret_key) : context_(move(context))
+                               const SecretKey &secret_key) : context_(move(context))
     {
         // Verify parameters
         if (!context_)
@@ -57,6 +82,37 @@ namespace seal
         {
             throw invalid_argument("secret_key is not valid for encryption parameters");
         }
+
+        // Set the secret key
+        secret_key_ = secret_key;
+        sk_generated_ = true;
+        crs_generated_ = false;
+
+        // Generate the public key
+        generate_pk();
+    }
+
+    KeyGenerator::KeyGenerator(std::shared_ptr<SEALContext> context,
+                               const SecretKey &secret_key,
+                               const KeyGenCRS &keygen_crs) : context_(move(context))
+    {
+        // Verify parameters
+        if (!context_)
+        {
+            throw invalid_argument("invalid context");
+        }
+        if (!context_->parameters_set())
+        {
+            throw invalid_argument("encryption parameters are not set correctly");
+        }
+        if (!secret_key.is_valid_for(context_) ||
+            secret_key.parms_id() != context_->first_parms_id())
+        {
+            throw invalid_argument("secret_key is not valid for encryption parameters");
+        }
+
+        keygen_crs_ = keygen_crs;
+        crs_generated_ = true;
 
         // Set the secret key
         secret_key_ = secret_key;
@@ -110,6 +166,7 @@ namespace seal
         // Secret key and public key are generated
         sk_generated_ = true;
         pk_generated_ = true;
+        crs_generated_ = false;
     }
 
     void KeyGenerator::generate_sk()
@@ -152,6 +209,33 @@ namespace seal
         sk_generated_ = true;
     }
 
+    void KeyGenerator::generate_crs()
+    {
+        // Extract encryption parameters.
+        auto &context_data = *context_->context_data();
+        auto &parms = context_data.parms();
+
+        // Initialize crs.
+        //keygen_crs_ = KeyGenCRS();
+        crs_generated_ = false;
+        keygen_crs_.data().resize(context_, parms.parms_id(), 2); // TODO: actually we don't need 2, but there is a hardcoded requirement for that, just leave it as it is for now
+
+        // The crs is in NTT form
+        keygen_crs_.data().is_ntt_form() = true;
+
+        shared_ptr<UniformRandomGenerator> random(parms.random_generator()->create());
+
+        // Sample a uniformly at random (we sample the NTT form directly)
+        uint64_t *crs = keygen_crs_.data().data(0);
+        set_poly_coeffs_uniform(context_data, crs, random);
+
+        // Set the parms_id for crs
+        keygen_crs_.parms_id() = parms.parms_id();
+
+        // Public key has been generated
+        crs_generated_ = true;
+    }
+
     void KeyGenerator::generate_pk()
     {
         if (!sk_generated_)
@@ -185,10 +269,11 @@ namespace seal
         // Generate public key: (pk[0],pk[1]) = ([-(as+e)]_q, a)
         uint64_t *secret_key = secret_key_.data().data();
 
-        // Sample a uniformly at random
-        // Set pk[1] = a (we sample the NTT form directly)
         uint64_t *public_key_1 = public_key_.data().data(1);
-        set_poly_coeffs_uniform(context_data, public_key_1, random);
+
+        if (!crs_generated_) generate_crs();
+        // copy crs data to pk[1]
+        set_poly_poly(keygen_crs_.data().data(0), coeff_count, coeff_mod_count, public_key_1);
 
         // calculate a*s + e (mod q) and store in pk[0]
         auto &small_ntt_tables = context_data.small_ntt_tables();
@@ -729,6 +814,15 @@ namespace seal
             throw logic_error("public key has not been generated");
         }
         return public_key_;
+    }
+
+    const KeyGenCRS &KeyGenerator::keygen_crs() const
+    {
+        if (!crs_generated_)
+        {
+            throw logic_error("keygen crs has not been generated");
+        }
+        return keygen_crs_;
     }
 
     void KeyGenerator::compute_secret_key_array(

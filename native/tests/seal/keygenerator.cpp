@@ -571,4 +571,69 @@ namespace SEALTest
             }
         }
     }
+    TEST(KeyGeneratorTest, FVKeyGenCRSGeneration)
+    {
+        EncryptionParameters parms(scheme_type::BFV);
+        parms.set_noise_standard_deviation(3.20);
+        parms.set_poly_modulus_degree(64);
+        parms.set_plain_modulus(1 << 6);
+        parms.set_coeff_modulus({ DefaultParams::small_mods_60bit(0) });
+        auto context = SEALContext::Create(parms);
+        {
+            KeyGenerator keygen(context);
+            auto sk = keygen.secret_key();
+            auto pk = keygen.public_key();
+            auto crs = keygen.keygen_crs();
+
+            KeyGenerator keygen2(context, sk, crs);
+            auto sk2 = keygen2.secret_key();
+            auto pk2 = keygen2.public_key();
+            auto crs2 = keygen2.keygen_crs();
+
+            ASSERT_EQ(sk.data().coeff_count(), sk2.data().coeff_count());
+            for (size_t i = 0; i < sk.data().coeff_count(); i++)
+            {
+                ASSERT_EQ(sk.data()[i], sk2.data()[i]);
+            }
+
+            ASSERT_EQ(crs.data().uint64_count(), crs2.data().uint64_count());
+            for (size_t i = 0; i < crs.data().uint64_count(); i++)
+            {
+                ASSERT_EQ(crs.data()[i], crs2.data()[i]);
+            }
+
+            Encryptor encryptor(context, pk2);
+            Decryptor decryptor(context, sk);
+            Ciphertext ctxt;
+            Plaintext pt1("1x^63 + 2x^33 + 3x^23 + 4x^13 + 5x^1 + 6");
+            Plaintext pt2;
+            encryptor.encrypt(pt1, ctxt);
+            decryptor.decrypt(ctxt, pt2);
+            ASSERT_TRUE(pt1 == pt2);
+        }
+        {
+            KeyGenerator keygen(context);
+            auto crs = keygen.keygen_crs();
+
+            KeyGenerator keygen2(context, crs);
+            auto sk2 = keygen2.secret_key();
+            auto pk2 = keygen2.public_key();
+            auto crs2 = keygen2.keygen_crs();
+
+            ASSERT_EQ(crs.data().uint64_count(), crs2.data().uint64_count());
+            for (size_t i = 0; i < crs.data().uint64_count(); i++)
+            {
+                ASSERT_EQ(crs.data()[i], crs2.data()[i]);
+            }
+
+            Encryptor encryptor(context, pk2);
+            Decryptor decryptor(context, sk2);
+            Ciphertext ctxt;
+            Plaintext pt1("1x^63 + 2x^33 + 3x^23 + 4x^13 + 5x^1 + 6");
+            Plaintext pt2;
+            encryptor.encrypt(pt1, ctxt);
+            decryptor.decrypt(ctxt, pt2);
+            ASSERT_TRUE(pt1 == pt2);
+        }
+    }
 }

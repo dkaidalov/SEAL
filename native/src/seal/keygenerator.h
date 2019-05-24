@@ -13,6 +13,7 @@
 #include "seal/relinkeys.h"
 #include "seal/galoiskeys.h"
 #include "seal/randomgen.h"
+#include "keygencrs.h"
 
 namespace seal
 {
@@ -56,6 +57,31 @@ namespace seal
             const SecretKey &secret_key);
 
         /**
+        Creates a KeyGenerator initialized with the specified SEALContext and
+        specified previously crs value for public key generation.
+
+        @param[in] context The SEALContext
+        @param[in] keygen_crs A previously generated crs value
+        @throws std::invalid_argument if the context is not set or encryption
+        parameters are not valid
+        */
+        KeyGenerator(std::shared_ptr<SEALContext> context, const KeyGenCRS &keygen_crs);
+
+        /**
+        Creates an KeyGenerator instance initialized with the specified SEALContext,
+        specified previously secret key and specified previously crs value.
+
+        @param[in] context The SEALContext
+        @param[in] secret_key A previously generated secret key
+        @param[in] keygen_crs A previously generated crs value
+        @throws std::invalid_argument if encryption parameters are not valid
+        @throws std::invalid_argument if secret_key or public_key is not valid
+        for encryption parameters
+        */
+        KeyGenerator(std::shared_ptr<SEALContext> context,
+                     const SecretKey &secret_key, const KeyGenCRS &keygen_crs);
+
+        /**
         Creates an KeyGenerator instance initialized with the specified SEALContext 
         and specified previously secret and public keys. This can e.g. be used 
         to increase the number of relinearization keys from what had earlier been 
@@ -81,6 +107,11 @@ namespace seal
         Returns a const reference to the public key.
         */
         const PublicKey &public_key() const;
+
+        /**
+        Returns a const reference to crs value that was used to generate a public key.
+        */
+        const KeyGenCRS &keygen_crs() const;
 
         /**
         Generates and returns the specified number of relinearization keys.
@@ -186,6 +217,11 @@ namespace seal
         void generate_pk();
 
         /**
+        Generates a crs value that is used to generate pk.
+        */
+        void generate_crs();
+
+        /**
         We use a fresh memory pool with `clear_on_destruction' enabled
         */
         MemoryPoolHandle pool_ = MemoryManager::GetPool(mm_prof_opt::FORCE_NEW, true);
@@ -196,6 +232,8 @@ namespace seal
 
         SecretKey secret_key_;
 
+        KeyGenCRS keygen_crs_;
+
         std::size_t secret_key_array_size_ = 0;
 
         util::Pointer<std::uint64_t> secret_key_array_;
@@ -205,5 +243,7 @@ namespace seal
         bool sk_generated_ = false;
 
         bool pk_generated_ = false;
+
+        bool crs_generated_ = false;
     };
 }
