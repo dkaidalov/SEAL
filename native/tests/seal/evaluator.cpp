@@ -1294,6 +1294,76 @@ namespace SEALTest
         decryptor.decrypt(encrypted, plain2);
         ASSERT_TRUE(plain2.to_string() == "1x^40 + 8x^30 + 18x^20 + 20x^10 + 10");
     }
+    TEST(EvaluatorTest, FVRelinearizeCRS)
+    {
+        EncryptionParameters parms(scheme_type::BFV);
+        SmallModulus plain_modulus(1 << 6);
+        parms.set_poly_modulus_degree(128);
+        parms.set_plain_modulus(plain_modulus);
+        parms.set_coeff_modulus({ DefaultParams::small_mods_40bit(0), DefaultParams::small_mods_40bit(1), DefaultParams::small_mods_40bit(2) });
+        parms.set_noise_standard_deviation(3.20);
+        auto context = SEALContext::Create(parms);
+        KeyGenerator keygen(context);
+
+        RelinKeys rlk = keygen.relin_keys(60, 3, true);
+
+        Encryptor encryptor(context, keygen.public_key());
+        Evaluator evaluator(context);
+        Decryptor decryptor(context, keygen.secret_key());
+
+        Ciphertext encrypted(context);
+        Ciphertext encrypted2(context);
+
+        Plaintext plain;
+        Plaintext plain2;
+
+        plain = 0;
+        encryptor.encrypt(plain, encrypted);
+        evaluator.square_inplace(encrypted);
+        evaluator.relinearize_inplace(encrypted, rlk);
+        decryptor.decrypt(encrypted, plain2);
+        ASSERT_TRUE(plain == plain2);
+
+        encryptor.encrypt(plain, encrypted);
+        evaluator.square_inplace(encrypted);
+        evaluator.square_inplace(encrypted);
+        evaluator.relinearize_inplace(encrypted, rlk);
+        decryptor.decrypt(encrypted, plain2);
+        ASSERT_TRUE(plain == plain2);
+
+        plain = "1x^10 + 2";
+        encryptor.encrypt(plain, encrypted);
+        evaluator.square_inplace(encrypted);
+        evaluator.relinearize_inplace(encrypted, rlk);
+        decryptor.decrypt(encrypted, plain2);
+        ASSERT_TRUE(plain2.to_string() == "1x^20 + 4x^10 + 4");
+
+        encryptor.encrypt(plain, encrypted);
+        evaluator.square_inplace(encrypted);
+        evaluator.square_inplace(encrypted);
+        evaluator.relinearize_inplace(encrypted, rlk);
+        decryptor.decrypt(encrypted, plain2);
+        ASSERT_TRUE(plain2.to_string() == "1x^40 + 8x^30 + 18x^20 + 20x^10 + 10");
+
+        // Relinearization with modulus switching
+        plain = "1x^10 + 2";
+        encryptor.encrypt(plain, encrypted);
+        evaluator.square_inplace(encrypted);
+        evaluator.relinearize_inplace(encrypted, rlk);
+        evaluator.mod_switch_to_next_inplace(encrypted);
+        decryptor.decrypt(encrypted, plain2);
+        ASSERT_TRUE(plain2.to_string() == "1x^20 + 4x^10 + 4");
+
+        encryptor.encrypt(plain, encrypted);
+        evaluator.square_inplace(encrypted);
+        evaluator.relinearize_inplace(encrypted, rlk);
+        evaluator.mod_switch_to_next_inplace(encrypted);
+        evaluator.square_inplace(encrypted);
+        evaluator.relinearize_inplace(encrypted, rlk);
+        evaluator.mod_switch_to_next_inplace(encrypted);
+        decryptor.decrypt(encrypted, plain2);
+        ASSERT_TRUE(plain2.to_string() == "1x^40 + 8x^30 + 18x^20 + 20x^10 + 10");
+    }
     TEST(EvaluatorTest, CKKSEncryptNaiveMultiplyDecrypt)
     {
         EncryptionParameters parms(scheme_type::CKKS);

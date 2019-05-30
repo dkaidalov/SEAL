@@ -316,12 +316,18 @@ namespace seal {
         pk_generated_ = true;
     }
 
-    RelinKeys KeyGenerator::relin_keys(int decomposition_bit_count, size_t count)
+    RelinKeys KeyGenerator::relin_keys(int decomposition_bit_count, size_t count, bool use_crs)
     {
         // Check to see if secret key and public key have been generated
         if (!sk_generated_)
         {
             throw logic_error("cannot generate relinearization keys for unspecified secret key");
+        }
+
+        // Check if keygen crs have been generated
+        if (use_crs && !crs_generated_)
+        {
+            throw logic_error("connot generate relinearization keys for unspecified crs value");
         }
 
         // Check that count is in correct interval
@@ -405,7 +411,14 @@ namespace seal {
                     uint64_t *eval_keys_second = relin_keys.data()[k][l].data(2 * i + 1);
 
                     // We sample a_i directly in NTT form
-                    set_poly_coeffs_uniform(context_data, eval_keys_second, random);
+                    if (use_crs)
+                    {
+                        set_poly_poly(keygen_crs_.data().data(0), coeff_count, coeff_mod_count, eval_keys_second);
+                    }
+                    else
+                    {
+                        set_poly_coeffs_uniform(context_data, eval_keys_second, random);
+                    }
 
                     for (size_t j = 0; j < coeff_mod_count; j++)
                     {

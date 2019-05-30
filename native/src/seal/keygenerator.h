@@ -118,10 +118,12 @@ namespace seal
 
         @param[in] decomposition_bit_count The decomposition bit count
         @param[in] count The number of relinearization keys to generate
+        @param[in] use_crs If true will use a common crs param 'a' to generate all relin_keys,
+         otherwise this param will be randomly generated for each key separetaly
         @throws std::invalid_argument if decomposition_bit_count is not within [1, 60]
         @throws std::invalid_argument if count is zero or too large
         */
-        RelinKeys relin_keys(int decomposition_bit_count, std::size_t count = 1);
+        RelinKeys relin_keys(int decomposition_bit_count, std::size_t count = 1, bool use_crs = false);
 
         /**
         Generates and returns Galois keys. This function creates specific Galois 

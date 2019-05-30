@@ -8,6 +8,7 @@
 #include "seal/defaultparams.h"
 #include "seal/encryptor.h"
 #include "seal/decryptor.h"
+#include "seal/evaluator.h"
 
 using namespace seal;
 using namespace seal::util;
@@ -575,9 +576,9 @@ namespace SEALTest
     {
         EncryptionParameters parms(scheme_type::BFV);
         parms.set_noise_standard_deviation(3.20);
-        parms.set_poly_modulus_degree(64);
+        parms.set_poly_modulus_degree(128);
         parms.set_plain_modulus(1 << 6);
-        parms.set_coeff_modulus({ DefaultParams::small_mods_60bit(0) });
+        parms.set_coeff_modulus({ DefaultParams::small_mods_40bit(0), DefaultParams::small_mods_40bit(1), DefaultParams::small_mods_40bit(2) });
         auto context = SEALContext::Create(parms);
         {
             KeyGenerator keygen(context);
@@ -634,6 +635,98 @@ namespace SEALTest
             encryptor.encrypt(pt1, ctxt);
             decryptor.decrypt(ctxt, pt2);
             ASSERT_TRUE(pt1 == pt2);
+        }
+        {
+            KeyGenerator keygen(context);
+            auto sk = keygen.secret_key();
+            auto pk = keygen.public_key();
+            auto rlk = keygen.relin_keys(60, 3, true);
+
+            Evaluator evaluator(context);
+            Encryptor encryptor(context, pk);
+            Decryptor decryptor(context, sk);
+            Ciphertext ctxt(context);
+            Plaintext pt1("1x^10 + 2");
+            Plaintext pt2;
+            encryptor.encrypt(pt1, ctxt);
+            evaluator.square_inplace(ctxt);
+            evaluator.relinearize_inplace(ctxt, rlk);
+            decryptor.decrypt(ctxt, pt2);
+            ASSERT_TRUE(pt2.to_string() == "1x^20 + 4x^10 + 4");
+        }
+        {
+            KeyGenerator keygen(context);
+            auto sk = keygen.secret_key();
+            auto pk = keygen.public_key();
+            auto relin_keys = keygen.relin_keys(60, 1, true);
+            auto crs = keygen.keygen_crs();
+
+            KeyGenerator keygen2(context, crs);
+            auto sk2 = keygen2.secret_key();
+            auto pk2 = keygen2.public_key();
+            auto relin_keys2 = keygen2.relin_keys(60, 1, true);
+
+            Evaluator evaluator(context);
+            Encryptor encryptor(context, pk);
+            Encryptor encryptor2(context, pk2);
+            Decryptor decryptor(context, sk);
+            Decryptor decryptor2(context, sk2);
+            Ciphertext ctxt;
+            Ciphertext ctxt2;
+            Plaintext pt1("1x^10 + 2");
+            Plaintext pt2;
+            Plaintext pt22;
+            encryptor.encrypt(pt1, ctxt);
+            encryptor2.encrypt(pt1, ctxt2);
+            evaluator.square_inplace(ctxt);
+            evaluator.square_inplace(ctxt2);
+            evaluator.relinearize_inplace(ctxt, relin_keys);
+            evaluator.relinearize_inplace(ctxt2, relin_keys2);
+            decryptor.decrypt(ctxt, pt2);
+            decryptor2.decrypt(ctxt2, pt22);
+            ASSERT_TRUE(pt2.to_string() == "1x^20 + 4x^10 + 4");
+            ASSERT_TRUE(pt2 == pt22);
+        }
+        {
+            KeyGenerator keygen(context);
+            auto sk = keygen.secret_key();
+            auto pk = keygen.public_key();
+            auto relin_keys = keygen.relin_keys(60, 1, true);
+            auto crs = keygen.keygen_crs();
+
+            KeyGenerator keygen2(context, sk, crs);
+            auto sk2 = keygen2.secret_key();
+            auto pk2 = keygen2.public_key();
+            auto relin_keys2 = keygen2.relin_keys(60, 1, true);
+            auto crs2 = keygen2.keygen_crs();
+
+            ASSERT_EQ(crs.data().uint64_count(), crs2.data().uint64_count());
+            for (size_t i = 0; i < crs.data().uint64_count(); i++)
+            {
+                ASSERT_EQ(crs.data()[i], crs2.data()[i]);
+            }
+
+            Evaluator evaluator(context);
+            Evaluator evaluator2(context);
+            Encryptor encryptor(context, pk);
+            Encryptor encryptor2(context, pk2);
+            Decryptor decryptor(context, sk);
+            Decryptor decryptor2(context, sk2);
+            Ciphertext ctxt(context);
+            Ciphertext ctxt2(context);
+            Plaintext pt1("1x^10 + 2");
+            Plaintext pt2;
+            Plaintext pt22;
+            encryptor.encrypt(pt1, ctxt);
+            encryptor2.encrypt(pt1, ctxt2);
+            evaluator.square_inplace(ctxt);
+            evaluator2.square_inplace(ctxt2);
+            evaluator.relinearize_inplace(ctxt, relin_keys);
+            evaluator2.relinearize_inplace(ctxt2, relin_keys2);
+            decryptor.decrypt(ctxt, pt2);
+            decryptor2.decrypt(ctxt2, pt22);
+            ASSERT_TRUE(pt2.to_string() == "1x^20 + 4x^10 + 4");
+            ASSERT_TRUE(pt2 == pt22);
         }
     }
 }
